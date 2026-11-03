@@ -10,6 +10,10 @@ export async function register(formData:FormData){
   const email = formData.get('email');
   const password = formData.get('password');
 
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    return;
+  }
+
   const {error} = await supabase.auth.signUp(
     {
       email,
@@ -34,6 +38,10 @@ export async function login(formData:FormData){
 
   const email = formData.get('email');
   const password = formData.get('password');
+
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    return;
+  }
 
   const {error} = await supabase.auth.signInWithPassword({
     email,
