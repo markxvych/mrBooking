@@ -77,9 +77,7 @@ export function HomeDashboard() {
             Створити кімнату
           </Button>
         </div>
-        <div className="text-muted-foreground mt-8 border-l-2 border-emerald-700/30 pl-4 text-xs leading-5">
-          Попередній перегляд інтерфейсу. Створені тут кімнати зникнуть після оновлення сторінки.
-        </div>
+
         <section id="rooms" className="mt-12 scroll-mt-8" aria-labelledby="rooms-heading">
           <div className="flex items-center justify-between gap-4 border-b pb-4">
             <h2 id="rooms-heading" className="text-lg font-medium">

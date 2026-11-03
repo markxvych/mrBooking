@@ -1,24 +1,22 @@
 'use client';
 
-import { useState, useTransition, type FormEvent } from 'react';
+import { useState, useTransition, type FormEvent, JSX } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { ArrowRight, Eye, EyeOff, LoaderCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
+type AuthFormProps = {
+  mode: 'login' | 'register';
+  action: (formData: FormData) => Promise<void>;
+};
+
+export function AuthForm({mode,action}: AuthFormProps) {
   const registering = mode === 'register';
   const [showPassword, setShowPassword] = useState(false);
   const [pending, startTransition] = useTransition();
-  const router = useRouter();
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    startTransition(() => router.push('/home'));
-  }
 
   return (
     <section className="w-full max-w-sm" aria-labelledby="auth-title">
@@ -31,7 +29,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
           : 'Увійдіть, щоб перейти до ваших кімнат.'}
       </p>
       <form
-        onSubmit={handleSubmit}
+        action={action}
         method="post"
         className="mt-8 space-y-5"
         aria-describedby="auth-preview"
@@ -122,7 +120,6 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
           {registering ? 'Увійти' : 'Зареєструватися'}
         </Link>
       </p>
-
     </section>
   );
 }
