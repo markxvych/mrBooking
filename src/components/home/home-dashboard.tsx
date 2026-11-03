@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, DoorOpen, Plus } from 'lucide-react';
 
@@ -16,25 +16,52 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-type PreviewRoom = { id: string; name: string; description: string };
+type Room = { id: string; name: string; description: string; owner_id: string };
 
-export function HomeDashboard() {
-  const [rooms, setRooms] = useState<PreviewRoom[]>([]);
+type HomeDashboardProps = {
+  rooms: Room[];
+  currentUserId: string;
+  createRoomAction: (formData: FormData) => Promise<{ success: boolean; message?: string }>;
+  deleteRoomAction: (id: string) => Promise<void>;
+  updateRoomAction: (
+    roomId: string,
+    formData: FormData,
+  ) => Promise<{ success: boolean; message?: string }>;
+};
+
+export function HomeDashboard({
+  rooms,
+  currentUserId,
+  createRoomAction,
+  deleteRoomAction,
+  updateRoomAction,
+}: HomeDashboardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [announcement, setAnnouncement] = useState('');
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [formError, setFormError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const createButton = useRef<HTMLButtonElement>(null);
 
-  function createRoom(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const name = String(form.get('name') ?? '').trim();
-    if (!name) return;
-    setRooms((current) => [
-      ...current,
-      { id: crypto.randomUUID(), name, description: String(form.get('description') ?? '').trim() },
-    ]);
-    setAnnouncement(`Кімнату «${name}» додано до попереднього перегляду.`);
-    setDialogOpen(false);
+  async function handleSaveRoom(formData: FormData) {
+    setFormError('');
+    setIsSubmitting(true);
+
+    try {
+      const result = editingRoom
+        ? await updateRoomAction(editingRoom.id, formData)
+        : await createRoomAction(formData);
+
+      if (!result.success) {
+        setFormError(result.message ?? 'Не вдалося створити кімнату.');
+        return;
+      }
+
+      setDialogOpen(false);
+    } catch {
+      setFormError('Не вдалося створити кімнату. Перевірте з’єднання та спробуйте ще раз.');
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -69,10 +96,17 @@ export function HomeDashboard() {
               Зустрічі починаються тут.
             </h1>
             <p className="text-muted-foreground mt-4 max-w-lg text-sm leading-6">
-              Створіть переговорну для своєї команди або перегляньте кімнати, до яких маєте доступ.
+              Переглядайте переговорні та створюйте власні кімнати для зустрічей.
             </p>
           </div>
-          <Button ref={createButton} className="h-11 px-5" onClick={() => setDialogOpen(true)}>
+          <Button
+            ref={createButton}
+            className="h-11 px-5"
+            onClick={() => {
+              setEditingRoom(null);
+              setDialogOpen(true);
+            }}
+          >
             <Plus aria-hidden="true" />
             Створити кімнату
           </Button>
@@ -81,7 +115,7 @@ export function HomeDashboard() {
         <section id="rooms" className="mt-12 scroll-mt-8" aria-labelledby="rooms-heading">
           <div className="flex items-center justify-between gap-4 border-b pb-4">
             <h2 id="rooms-heading" className="text-lg font-medium">
-              Ваші кімнати{' '}
+              Усі кімнати{' '}
               <span className="text-muted-foreground ml-2 text-sm font-normal">{rooms.length}</span>
             </h2>
           </div>
@@ -90,14 +124,17 @@ export function HomeDashboard() {
               <span className="bg-muted mb-5 flex size-12 items-center justify-center rounded-xl">
                 <DoorOpen className="text-muted-foreground size-6" aria-hidden="true" />
               </span>
-              <h3 className="text-base font-medium">Тут з’являться ваші кімнати</h3>
+              <h3 className="text-base font-medium">Кімнат поки немає</h3>
               <p className="text-muted-foreground mt-2 max-w-sm text-sm leading-6">
                 Створіть першу переговорну. Ви автоматично станете її адміністратором.
               </p>
               <Button
                 variant="outline"
                 className="mt-6 h-10 px-4"
-                onClick={() => setDialogOpen(true)}
+                onClick={() => {
+                  setEditingRoom(null);
+                  setDialogOpen(true);
+                }}
               >
                 <Plus aria-hidden="true" />
                 Створити першу кімнату
@@ -109,9 +146,26 @@ export function HomeDashboard() {
                 <article key={room.id} className="bg-background rounded-xl border p-6">
                   <div className="flex items-center justify-between gap-4">
                     <DoorOpen className="text-muted-foreground size-5" aria-hidden="true" />
-                    <span className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800">
-                      Admin
-                    </span>
+                    {room.owner_id === currentUserId && (
+                      <form action={deleteRoomAction.bind(null, room.id)}>
+                        <span className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800">
+                          Admin
+                        </span>
+                        <Button variant="outline" type="submit">
+                          Delete
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingRoom(room);
+                            setDialogOpen(true);
+                          }}
+                        >
+                          Update
+                        </Button>
+                      </form>
+                    )}
                   </div>
                   <h3 className="mt-5 text-lg font-medium break-words">{room.name}</h3>
                   <p className="text-muted-foreground mt-2 text-sm leading-6 break-words whitespace-pre-wrap">
@@ -122,11 +176,15 @@ export function HomeDashboard() {
             </div>
           )}
         </section>
-        <p role="status" className="sr-only">
-          {announcement}
-        </p>
       </main>
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          if (isSubmitting) return;
+          setFormError('');
+          setDialogOpen(open);
+        }}
+      >
         <DialogContent
           className="p-6 sm:max-w-md"
           showCloseButton={false}
@@ -136,20 +194,29 @@ export function HomeDashboard() {
           }}
         >
           <DialogHeader>
-            <DialogTitle className="text-xl font-semibold">Нова кімната</DialogTitle>
+            <DialogTitle className="text-xl font-semibold">
+              {editingRoom ? 'Редагувати кімнату' : 'Нова кімната'}
+            </DialogTitle>
             <DialogDescription>
               Додайте назву й опис переговорної. Ви станете її адміністратором.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={createRoom} className="mt-2 space-y-5">
+          <form
+            action={handleSaveRoom}
+            className="mt-2 space-y-5"
+            aria-busy={isSubmitting}
+            key={editingRoom?.id ?? 'create'}
+          >
             <div className="space-y-2">
               <Label htmlFor="room-name">Назва кімнати</Label>
               <Input
+                defaultValue={editingRoom?.name ?? ''}
                 id="room-name"
                 name="name"
                 placeholder="Наприклад, Велика переговорна"
                 className="h-11 px-3"
                 required
+                disabled={isSubmitting}
                 maxLength={100}
                 pattern=".*\S.*"
               />
@@ -159,28 +226,33 @@ export function HomeDashboard() {
                 Опис <span className="text-muted-foreground font-normal">(необов’язково)</span>
               </Label>
               <textarea
+                defaultValue={editingRoom?.description ?? ''}
                 id="room-description"
                 name="description"
                 placeholder="Для яких зустрічей підходить кімната?"
                 maxLength={1000}
                 rows={3}
+                disabled={isSubmitting}
                 className="bg-background placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 w-full resize-y rounded-lg border px-3 py-2.5 text-sm outline-none focus-visible:ring-3"
               />
             </div>
-            <p className="text-muted-foreground text-xs leading-5">
-              Кімната додається лише до попереднього перегляду, без збереження в базі.
-            </p>
+            {formError && (
+              <p role="alert" className="text-sm text-red-700">
+                {formError}
+              </p>
+            )}
             <div className="flex justify-end gap-2 border-t pt-4">
               <Button
                 type="button"
                 variant="outline"
                 className="h-10 px-4"
+                disabled={isSubmitting}
                 onClick={() => setDialogOpen(false)}
               >
                 Скасувати
               </Button>
-              <Button type="submit" className="h-10 px-4">
-                Створити кімнату
+              <Button type="submit" className="h-10 px-4" disabled={isSubmitting}>
+                {isSubmitting ? 'Збереження…' : editingRoom ? 'Змінити' : 'Створити кімнату'}
               </Button>
             </div>
           </form>
