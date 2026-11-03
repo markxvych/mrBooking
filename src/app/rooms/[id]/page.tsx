@@ -1,33 +1,49 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowLeft, DoorOpen } from 'lucide-react';
+import { ArrowLeft, DoorOpen, LogOut } from 'lucide-react';
 
-import { getRoom } from '@/app/home/action';
+import { getRoom, logout } from '@/app/home/action';
 import { Brand } from '@/components/brand';
 import { BookingDialog } from '@/components/bookings/booking-dialog';
 import { BookingSchedule } from '@/components/bookings/booking-schedule';
+import { RoomMembers } from '@/components/rooms/room-members';
 import { Button } from '@/components/ui/button';
-import { addBooking, getBookings, updateBooking, deleteBooking } from './action';
+import {
+  addBooking,
+  getBookings,
+  updateBooking,
+  deleteBooking,
+  addRoomMember,
+  joinBooking,
+  leaveBooking,
+} from './action';
 
 export const metadata: Metadata = { title: 'Кімната | mrBooking' };
 
 export default async function RoomPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { room, currentUserId } = await getRoom(id);
+  const { room, currentUserId, isAdmin, members } = await getRoom(id);
   const { bookings, errorMessage } = await getBookings(room.id);
-  const isAdmin = room.owner_id === currentUserId;
 
   return (
     <div className="min-h-svh">
       <header className="bg-background border-b">
         <div className="mx-auto flex min-h-20 max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8">
           <Brand href="/home" />
-          <Button asChild variant="ghost" className="h-10 px-3">
-            <Link href="/home">
-              <ArrowLeft aria-hidden="true" />
-              Усі кімнати
-            </Link>
-          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            <Button asChild variant="ghost" className="h-10 px-3">
+              <Link href="/home" aria-label="Усі кімнати">
+                <ArrowLeft aria-hidden="true" />
+                <span className="hidden sm:inline">Усі кімнати</span>
+              </Link>
+            </Button>
+            <form action={logout}>
+              <Button type="submit" variant="outline" className="h-10 px-3">
+                <LogOut aria-hidden="true" />
+                Вийти
+              </Button>
+            </form>
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-16">
@@ -51,17 +67,27 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
             <h2 id="schedule-heading" className="text-lg font-medium">
               Розклад кімнати
             </h2>
-            <BookingDialog roomName={room.name} bookingAction={addBooking.bind(null, room.id)} />
+            {isAdmin && (
+              <BookingDialog roomName={room.name} bookingAction={addBooking.bind(null, room.id)} />
+            )}
           </div>
           <BookingSchedule
             bookings={bookings}
             errorMessage={errorMessage}
             roomName={room.name}
             isAdmin={isAdmin}
+            currentUserId={currentUserId}
             updateBookingAction={updateBooking.bind(null, room.id)}
             deleteBookingAction={deleteBooking.bind(null, room.id)}
+            joinBookingAction={joinBooking.bind(null, room.id)}
+            leaveBookingAction={leaveBooking.bind(null, room.id)}
           />
         </section>
+        <RoomMembers
+          members={members}
+          isAdmin={isAdmin}
+          addMemberAction={addRoomMember.bind(null, room.id)}
+        />
       </main>
     </div>
   );

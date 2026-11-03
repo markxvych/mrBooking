@@ -20,7 +20,9 @@ export async function getBookings(
 
   const { data, error } = await supabase
     .from('bookings')
-    .select('id, start_at, end_at, description, author:profiles!bookings_author_profile_fkey(name)')
+    .select(
+      'id, start_at, end_at, description, author:profiles!bookings_author_profile_fkey(name), participants:booking_participants(user_id, profile:profiles(name))',
+    )
     .eq('room_id', roomId)
     .eq('status', 'active')
     .order('start_at', { ascending: true })
@@ -32,6 +34,7 @@ export async function getBookings(
         end_at: string;
         description: string | null;
         author: { name: string } | null;
+        participants: { user_id: string; profile: { name: string } | null }[];
       }[]
     >();
 
@@ -44,28 +47,23 @@ export async function getBookings(
   }
 
   return {
-    bookings: (data ?? []).map(({ author, ...booking }) => ({
+    bookings: (data ?? []).map(({ author, participants, ...booking }) => ({
       ...booking,
       author_name: author?.name ?? 'Користувач',
+      participants: participants.map((participant) => ({
+        user_id: participant.user_id,
+        name: participant.profile?.name ?? 'Користувач',
+      })),
     })),
   };
 }
 
 export async function addBooking(roomId: string, formData: FormData): Promise<BookingActionResult> {
+  const { isAdmin } = await getRoom(roomId);
+  if (!isAdmin) {
+    return { success: false, message: 'Створювати бронювання може лише адміністратор кімнати.' };
+  }
   const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return { success: false, message: 'Увійдіть повторно, щоб створити бронювання.' };
-  }
-
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(roomId)) {
-    return { success: false, message: 'Некоректний ID кімнати.' };
-  }
 
   const fields = readBookingFields(formData);
   if (!fields.success) return fields;
@@ -128,8 +126,8 @@ export async function updateBooking(
   bookingId: string,
   formData: FormData,
 ): Promise<BookingActionResult> {
-  const { room, currentUserId } = await getRoom(roomId);
-  if (room.owner_id !== currentUserId) {
+  const { isAdmin } = await getRoom(roomId);
+  if (!isAdmin) {
     return { success: false, message: 'Змінювати бронювання може лише адміністратор кімнати.' };
   }
   const supabase = await createClient();
@@ -155,8 +153,8 @@ export async function deleteBooking(
   roomId: string,
   bookingId: string,
 ): Promise<BookingActionResult> {
-  const { room, currentUserId } = await getRoom(roomId);
-  if (room.owner_id !== currentUserId) {
+  const { isAdmin } = await getRoom(roomId);
+  if (!isAdmin) {
     return { success: false, message: 'Видаляти бронювання може лише адміністратор кімнати.' };
   }
   const supabase = await createClient();
@@ -171,6 +169,95 @@ export async function deleteBooking(
 
   if (error) return mutationError(error);
   if (!data) return { success: false, message: 'Бронювання не знайдено або доступ уже змінено.' };
+
+  revalidatePath(`/rooms/${roomId}`);
+  return { success: true };
+}
+
+export async function addRoomMember(
+  roomId: string,
+  formData: FormData,
+): Promise<BookingActionResult> {
+  const { isAdmin } = await getRoom(roomId);
+  if (!isAdmin)
+    return { success: false, message: 'Додавати учасників може лише адміністратор кімнати.' };
+
+  const email = formData.get('email');
+  const role = formData.get('role');
+  if (
+    typeof email !== 'string' ||
+    !email.trim() ||
+    email.length > 320 ||
+    (role !== 'admin' && role !== 'user')
+  ) {
+    return { success: false, message: 'Вкажіть email і виберіть роль.' };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('add_room_member', {
+    target_room_id: roomId,
+    member_email: email.trim(),
+    member_role: role,
+  });
+  if (error) {
+    return {
+      success: false,
+      message:
+        error.code === 'P0001' || error.code === '42501'
+          ? error.message
+          : 'Не вдалося додати учасника.',
+    };
+  }
+
+  revalidatePath(`/rooms/${roomId}`);
+  return { success: true };
+}
+
+export async function joinBooking(roomId: string, bookingId: string): Promise<BookingActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { success: false, message: 'Увійдіть повторно, щоб долучитися.' };
+
+  const { data: booking, error: bookingError } = await supabase
+    .from('bookings')
+    .select('id')
+    .eq('id', bookingId)
+    .eq('room_id', roomId)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (bookingError || !booking) return { success: false, message: 'Бронювання більше недоступне.' };
+
+  const { error } = await supabase
+    .from('booking_participants')
+    .insert({ booking_id: bookingId, user_id: user.id });
+  if (error && error.code !== '23505')
+    return { success: false, message: 'Не вдалося долучитися до зустрічі.' };
+
+  revalidatePath(`/rooms/${roomId}`);
+  return { success: true };
+}
+
+export async function leaveBooking(
+  roomId: string,
+  bookingId: string,
+): Promise<BookingActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user)
+    return { success: false, message: 'Увійдіть повторно, щоб вийти із зустрічі.' };
+
+  const { error } = await supabase
+    .from('booking_participants')
+    .delete()
+    .eq('booking_id', bookingId)
+    .eq('user_id', user.id);
+  if (error) return { success: false, message: 'Не вдалося вийти із зустрічі.' };
 
   revalidatePath(`/rooms/${roomId}`);
   return { success: true };

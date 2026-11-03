@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, DoorOpen, Plus } from 'lucide-react';
+import { DoorOpen, LogOut, Plus } from 'lucide-react';
 
 import { Brand } from '@/components/brand';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@ type HomeDashboardProps = {
     roomId: string,
     formData: FormData,
   ) => Promise<{ success: boolean; message?: string }>;
+  logout: () => Promise<void>;
 };
 
 export function HomeDashboard({
@@ -35,6 +36,7 @@ export function HomeDashboard({
   createRoomAction,
   deleteRoomAction,
   updateRoomAction,
+  logout,
 }: HomeDashboardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
@@ -79,13 +81,12 @@ export function HomeDashboard({
               </a>
             </nav>
           </div>
-          <Button asChild variant="ghost" className="px-0 sm:px-3">
-            <Link href="/">
-              <ArrowLeft aria-hidden="true" />
-              <span className="hidden sm:inline">На стартову</span>
-              <span className="sm:hidden">Назад</span>
-            </Link>
-          </Button>
+          <form action={logout} className="ml-auto">
+            <Button type="submit" variant="outline" className="h-10 px-3">
+              <LogOut aria-hidden="true" />
+              Вийти
+            </Button>
+          </form>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-16">

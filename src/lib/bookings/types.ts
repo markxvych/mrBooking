@@ -4,6 +4,7 @@ export type Booking = {
   end_at: string;
   description: string | null;
   author_name: string;
+  participants: { user_id: string; name: string }[];
 };
 
 export type BookingActionResult = { success: boolean; message?: string };

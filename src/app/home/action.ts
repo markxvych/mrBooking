@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import type { RoomMember } from '@/lib/rooms/types';
 
 // CRUD
 export async function CRUDRoom(
@@ -175,8 +176,17 @@ export async function getRoom(roomId: string) {
 
   const { data: room, error } = await supabase
     .from('rooms')
-    .select('id, name, description, owner_id')
+    .select('id, name, description, owner_id, owner:profiles!rooms_owner_profile_fkey(name)')
     .eq('id', roomId)
+    .returns<
+      {
+        id: string;
+        name: string;
+        description: string;
+        owner_id: string;
+        owner: { name: string } | null;
+      }[]
+    >()
     .maybeSingle();
 
   if (error) {
@@ -188,5 +198,39 @@ export async function getRoom(roomId: string) {
     notFound();
   }
 
-  return { room, currentUserId: user.id };
+  const { data: members, error: membersError } = await supabase
+    .from('room_members')
+    .select('user_id, role, profile:profiles(name)')
+    .eq('room_id', roomId)
+    .returns<{ user_id: string; role: RoomMember['role']; profile: { name: string } | null }[]>();
+
+  if (membersError) throw new Error('Не вдалося завантажити учасників кімнати.');
+
+  const roomMembers: RoomMember[] = [
+    { user_id: room.owner_id, name: room.owner?.name ?? 'Користувач', role: 'admin' },
+    ...(members ?? []).map((member) => ({
+      user_id: member.user_id,
+      name: member.profile?.name ?? 'Користувач',
+      role: member.role,
+    })),
+  ];
+  const isAdmin = roomMembers.some(
+    (member) => member.user_id === user.id && member.role === 'admin',
+  );
+
+  return { room, currentUserId: user.id, isAdmin, members: roomMembers };
+}
+
+// logout
+export async function logout() {
+  const supabase = await createClient();
+
+  const { error: logoutError } = await supabase.auth.signOut({ scope: 'local' });
+
+  if (logoutError) {
+    console.error(logoutError.code, logoutError.message);
+    return;
+  }
+  revalidatePath('/', 'layout');
+  redirect('/');
 }

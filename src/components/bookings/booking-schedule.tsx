@@ -12,8 +12,11 @@ type BookingScheduleProps = {
   errorMessage?: string;
   roomName: string;
   isAdmin: boolean;
+  currentUserId: string;
   updateBookingAction: (bookingId: string, formData: FormData) => Promise<BookingActionResult>;
   deleteBookingAction: (bookingId: string) => Promise<BookingActionResult>;
+  joinBookingAction: (bookingId: string) => Promise<BookingActionResult>;
+  leaveBookingAction: (bookingId: string) => Promise<BookingActionResult>;
 };
 
 const subscribe = () => () => {};
@@ -25,24 +28,30 @@ export function BookingSchedule({
   errorMessage,
   roomName,
   isAdmin,
+  currentUserId,
   updateBookingAction,
   deleteBookingAction,
+  joinBookingAction,
+  leaveBookingAction,
 }: BookingScheduleProps) {
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState('');
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
 
   const timeZone = useSyncExternalStore(subscribe, getTimeZone, getServerTimeZone);
 
-  async function handleDeleteBooking(bookingId: string) {
-    setDeleteError('');
-    setDeletingId(bookingId);
+  async function handleBookingAction(
+    bookingId: string,
+    action: (id: string) => Promise<BookingActionResult>,
+  ) {
+    setActionError('');
+    setPendingId(bookingId);
     try {
-      const result = await deleteBookingAction(bookingId);
-      if (!result.success) setDeleteError(result.message ?? 'Не вдалося видалити бронювання.');
+      const result = await action(bookingId);
+      if (!result.success) setActionError(result.message ?? 'Не вдалося виконати дію.');
     } catch {
-      setDeleteError('Не вдалося видалити бронювання. Спробуйте ще раз.');
+      setActionError('Не вдалося виконати дію. Спробуйте ще раз.');
     } finally {
-      setDeletingId(null);
+      setPendingId(null);
     }
   }
 
@@ -70,9 +79,9 @@ export function BookingSchedule({
   return (
     <div className="mt-6">
       <p className="text-muted-foreground mb-4 text-xs">Часовий пояс: {timeZone}</p>
-      {deleteError && (
+      {actionError && (
         <p role="alert" className="mb-4 text-sm text-red-700">
-          {deleteError}
+          {actionError}
         </p>
       )}
       {!bookings.length && (
@@ -87,6 +96,9 @@ export function BookingSchedule({
       )}
       <ul aria-label="Бронювання кімнати" className="space-y-3">
         {bookings.map((booking) => {
+          const joined = booking.participants.some(
+            (participant) => participant.user_id === currentUserId,
+          );
           const start = new Date(booking.start_at);
           const end = new Date(booking.end_at);
           const startDate = dateFormat.format(start);
@@ -117,26 +129,47 @@ export function BookingSchedule({
               <p className="text-muted-foreground mt-3 text-xs break-words">
                 Бронює: {booking.author_name}
               </p>
-              {isAdmin && (
-                <div className="mt-4 flex flex-wrap items-start gap-2 border-t pt-4">
-                  <BookingDialog
-                    booking={booking}
-                    roomName={roomName}
-                    bookingAction={updateBookingAction.bind(null, booking.id)}
-                  />
-                  <form action={() => handleDeleteBooking(booking.id)}>
-                    <Button
-                      type="submit"
-                      variant="outline"
-                      className="h-10 text-red-700 hover:text-red-800"
-                      disabled={deletingId !== null}
-                    >
-                      <Trash2 aria-hidden="true" />
-                      {deletingId === booking.id ? 'Скасовуємо…' : 'Скасувати'}
-                    </Button>
-                  </form>
-                </div>
-              )}
+              <p className="text-muted-foreground mt-2 text-xs break-words">
+                Учасники:{' '}
+                {booking.participants.map((participant) => participant.name).join(', ') ||
+                  'Поки немає'}
+              </p>
+              <div className="mt-4 flex flex-wrap items-start gap-2 border-t pt-4">
+                <form
+                  action={() =>
+                    handleBookingAction(booking.id, joined ? leaveBookingAction : joinBookingAction)
+                  }
+                >
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    className="h-10"
+                    disabled={pendingId !== null}
+                  >
+                    {joined ? 'Вийти' : 'Долучитися'}
+                  </Button>
+                </form>
+                {isAdmin && (
+                  <>
+                    <BookingDialog
+                      booking={booking}
+                      roomName={roomName}
+                      bookingAction={updateBookingAction.bind(null, booking.id)}
+                    />
+                    <form action={() => handleBookingAction(booking.id, deleteBookingAction)}>
+                      <Button
+                        type="submit"
+                        variant="outline"
+                        className="h-10 text-red-700 hover:text-red-800"
+                        disabled={pendingId !== null}
+                      >
+                        <Trash2 aria-hidden="true" />
+                        Скасувати
+                      </Button>
+                    </form>
+                  </>
+                )}
+              </div>
             </li>
           );
         })}
