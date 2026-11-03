@@ -16,7 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-type Room = { id: string; name: string; description: string; owner_id: string };
+type Room = { id: string; name: string; description: string; owner_id: string; owner_name: string };
 
 type HomeDashboardProps = {
   rooms: Room[];
@@ -171,6 +171,14 @@ export function HomeDashboard({
                   <p className="text-muted-foreground mt-2 text-sm leading-6 break-words whitespace-pre-wrap">
                     {room.description || 'Опис кімнати ще не додано.'}
                   </p>
+                  <p className="text-muted-foreground mt-3 text-xs break-words">
+                    Власник: {room.owner_name}
+                  </p>
+                  <Button asChild variant="outline" className="mt-5 h-10 w-full">
+                    <Link href={`/rooms/${room.id}`} aria-label={`Відкрити кімнату «${room.name}»`}>
+                      Відкрити
+                    </Link>
+                  </Button>
                 </article>
               ))}
             </div>

@@ -1,7 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 
 // CRUD
@@ -59,14 +59,29 @@ export async function getRooms() {
 
   const { data: rooms, error: roomsError } = await supabase
     .from('rooms')
-    .select('id, name, description, owner_id');
+    .select('id, name, description, owner_id, owner:profiles!rooms_owner_profile_fkey(name)')
+    .returns<
+      {
+        id: string;
+        name: string;
+        description: string;
+        owner_id: string;
+        owner: { name: string } | null;
+      }[]
+    >();
 
   if (roomsError) {
     console.error(roomsError.code, roomsError.message);
     throw new Error('Не вдалося завантажити кімнати.');
   }
 
-  return { rooms: rooms ?? [], currentUserId: user.id };
+  return {
+    rooms: (rooms ?? []).map(({ owner, ...room }) => ({
+      ...room,
+      owner_name: owner?.name ?? 'Користувач',
+    })),
+    currentUserId: user.id,
+  };
 }
 
 // delete room
@@ -96,6 +111,7 @@ export async function deleteRoom(roomId: string) {
   }
 
   revalidatePath('/home');
+  revalidatePath(`/rooms/${roomId}`);
 }
 
 // update room
@@ -115,7 +131,6 @@ export async function updateRoom(roomId: string, formData: FormData) {
   const name = formData.get('name');
   const description = formData.get('description') ?? '';
 
-
   if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
     return { success: false, message: 'Вкажіть назву кімнати від 1 до 100 символів.' };
   }
@@ -123,7 +138,7 @@ export async function updateRoom(roomId: string, formData: FormData) {
     return { success: false, message: 'Опис кімнати має містити не більше 1000 символів.' };
   }
 
-  const { data: updatedRooms, error : updateError } = await supabase
+  const { data: updatedRooms, error: updateError } = await supabase
     .from('rooms')
     .update({
       name: name.trim(),
@@ -138,6 +153,40 @@ export async function updateRoom(roomId: string, formData: FormData) {
   }
 
   revalidatePath('/home');
+  revalidatePath(`/rooms/${roomId}`);
   return { success: true };
+}
 
+// get one room
+export async function getRoom(roomId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    redirect('/login');
+  }
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(roomId)) {
+    notFound();
+  }
+
+  const { data: room, error } = await supabase
+    .from('rooms')
+    .select('id, name, description, owner_id')
+    .eq('id', roomId)
+    .maybeSingle();
+
+  if (error) {
+    console.error(error.code, error.message);
+    throw new Error('Не вдалося завантажити кімнату.');
+  }
+
+  if (!room) {
+    notFound();
+  }
+
+  return { room, currentUserId: user.id };
 }
